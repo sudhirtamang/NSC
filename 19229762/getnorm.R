@@ -1,0 +1,24 @@
+getnorm<-function(x,type=c("Winsorized","NS"),W.parameter=NULL){
+  f<-ecdf(x)
+  n<-length(x)
+  if(type=="NS"){
+    transform<-function(t){
+      t.norm<-f(t)*n/(n+1)
+      t.norm[t.norm==0]<-1/(n+1)
+      t.norm<-qnorm(t.norm)
+      t.norm
+    }}
+  if(type=="Winsorized"){
+    if(missing(W.parameter))W.parameter=1/(4*n^(1/4)*sqrt(pi*log(n)))
+    transform<-function(t){
+      t.norm<-f(t)
+      t.norm[t.norm<W.parameter]<-W.parameter
+      t.norm[t.norm>1-W.parameter]<-1-W.parameter
+      t.norm<-qnorm(t.norm)
+      t.norm
+    }
+  }
+  x.norm<-transform(x)
+  list(x.norm=x.norm,transform=transform)
+}
+

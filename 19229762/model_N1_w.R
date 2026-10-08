@@ -1,0 +1,107 @@
+library(mvtnorm)
+library(pamr)
+source("functions.R")
+
+
+n.test=10000
+
+pi <- 0.5
+
+delta=(2*qnorm(0.10))^2
+
+n=200
+
+p <- 2000
+
+x <- matrix(0,p,nrow=n)
+
+sigma <- matrix(0,p,p)
+for(i in 1:p){
+    for(j in 1:p){
+        sigma[i,j] <- 0^abs(i-j)
+    }
+}
+
+mu1 <- c(rep(1,10),rep(0,p-10))
+a <- drop(sqrt(delta/(mu1%*%solve(sigma)%*%mu1)))
+mu1 <- (a*mu1)
+
+mu2 <- rep(0,p)
+
+x.test <- matrix(0,p,nrow=n.test)
+
+seed <- 20090901
+set.seed(seed, kind = NULL, normal.kind = NULL)
+
+y.test <- rep(0,n.test)
+z <- runif(n.test,0,1)
+id <- which(z>0.5)
+n2.test <- length(id)
+n1.test <- n.test-n2.test
+y.test[id] <- 1
+x.test <- matrix(rnorm(n.test*p),n.test,p)
+x.test[id,] <- sweep(x.test[id,],2,mu1)
+
+## nruns <- 500
+## error <- rep(0,nruns)
+## C <- rep(0,nruns)
+## IC <- rep(0,nruns)
+
+
+
+h=1
+
+##=== We demonstrate the following procedure with only one run. For a
+#simulation study with more replicates, readers can wrap the following
+#code with a loop, modify the objects "error, C, IC" into vectors, and
+#report the median of "error, C, IC".
+
+seed <- 30090901+h*7
+set.seed(seed, kind = NULL, normal.kind = NULL)
+
+y <- rep(0,n)
+z <- runif(n,0,1)
+id <- which(z>0.5)
+n2 <- length(id)
+n1 <- n-n2
+y[id] <- 1
+x <- matrix(rnorm(n*p),n,p)
+x[id,] <- sweep(x[id,],2,mu1)
+
+x.norm <- matrix(0,n,p)
+x.test.norm <- matrix(0,n.test,p)
+for(i in 1:p){
+    obj.norm <- getnorm.w(x[,i])
+    x.norm[,i] <- obj.norm$x.norm
+    x.test.norm[,i] <- obj.norm$transform(x.test[,i])
+}
+  
+dat.train <- list(x=t(x.norm),y=y,geneid=c(1:p))
+dat.test <- list(x=t(x.test.norm),y=y.test,geneid=c(1:p))
+obj.pam <- pamr.train(dat.train)
+set.seed(123456)
+obj.pamr.cv <- pamr.cv(obj.pam,dat.train)
+t <- obj.pamr.cv$threshold[which.min(obj.pamr.cv$error)]
+fit <- pamr.predict(obj.pam,t(x.test.norm),type="class",threshold=t)
+fit <- as.numeric(fit)-1
+error <- mean(abs(fit-y.test))# 
+
+pam.sel <- rep(0,p)
+pam.sel[as.numeric(pamr.listgenes(obj.pam,dat.train,threshold=t)[,1])] <- 1
+
+Iv.true <- rep(0,p)
+Iv.true[mu1!=0] <- 1
+  
+Iv.hat <- rep(0,p)
+Iv.hat[pam.sel>0] <- 1
+  
+C <- sum((Iv.true+Iv.hat)==2)# 
+IC <- sum((Iv.true-Iv.hat)== -1)# 
+
+
+#== results ===
+error
+C
+IC
+
+
