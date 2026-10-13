@@ -45,7 +45,7 @@ ModelN4 <- function(n, p, d = 10, n.test, rand.seed) {
   y[idx] <- 1
   
   x <- matrix(rweibull(n * p, shape = 1, scale = 1), nrow = n, ncol = p)
-  x[idx, ] <- sweep(x[idx, ], 2, MU2, FUN = "+")
+  x[idx, ] <- sweep(x[idx, , drop=FALSE], 2, MU2, FUN = "+")
   
   # --- Test Data ---
   y.test <- numeric(n.test)
@@ -54,7 +54,7 @@ ModelN4 <- function(n, p, d = 10, n.test, rand.seed) {
   y.test[id] <- 1  
   
   x.test <- matrix(rweibull(n.test * p, shape = 1, scale = 1), nrow = n.test, ncol = p)
-  x.test[id, ] <- sweep(x.test[id, ], 2, MU2, FUN = "+")
+  x.test[id, ] <- sweep(x.test[id, , drop=FALSE], 2, MU2, FUN = "+")
   
   list(x = x, y = y, x.test = x.test, y.test = y.test, MU2 = MU2)
 }
@@ -79,7 +79,7 @@ ModelN1 <- function(n, p, d = 10, n.test, rand.seed) {
   y[idx] <- 1
   
   x <- matrix(rnorm(n * p), nrow = n, ncol = p)
-  x[idx, ] <- sweep(x[idx, ], 2, MU2, FUN = "+")
+  x[idx, ] <- sweep(x[idx, , drop=FALSE], 2, MU2, FUN = "+")
   
   # --- Test Data ---
   y.test <- numeric(n.test)
@@ -88,26 +88,22 @@ ModelN1 <- function(n, p, d = 10, n.test, rand.seed) {
   y.test[id] <- 1  
   
   x.test <- matrix(rnorm(n.test * p), nrow = n.test, ncol = p)
-  x.test[id, ] <- sweep(x.test[id, ], 2, MU2, FUN = "+")
+  x.test[id, ] <- sweep(x.test[id, , drop=FALSE], 2, MU2, FUN = "+")
   
   list(x = x, y = y, x.test = x.test, y.test = y.test, MU2 = MU2)
 }
 
 ModelN5 <- function(n, p, d = 10, n.test, rand.seed) {
+  if (p < d) stop("p must be greater than or equal to d")
   set.seed(rand.seed)
-  
-  # Exact constant 'a' for 10% Bayes error under independent Exp(1) / Weibull(1,1)
-  a <- log(5) / d
-  MU2 <- c(rep(a, d), rep(0, p - d))
   
   # --- Training Data ---
   y <- numeric(n)
   z <- runif(n, 0, 1)
   idx <- which(z > 0.5)
   y[idx] <- 1
-  
-  x <- matrix(rweibull(n * p, shape = 1, scale = 1), nrow = n, ncol = p)
-  x[idx, ] <- sweep(x[idx, ], 2, MU2, FUN = "+")
+  x <- MASS::mvrnorm(n = n, mu = rep(0, p), Sigma = sigma)
+  x[idx, ] <- sweep(x[idx, , drop = FALSE], 2, MU2, FUN = "+")
   
   # --- Test Data ---
   y.test <- numeric(n.test)
@@ -115,11 +111,12 @@ ModelN5 <- function(n, p, d = 10, n.test, rand.seed) {
   id <- which(z.test > 0.5)
   y.test[id] <- 1  
   
-  x.test <- matrix(rweibull(n.test * p, shape = 1, scale = 1), nrow = n.test, ncol = p)
-  x.test[id, ] <- sweep(x.test[id, ], 2, MU2, FUN = "+")
+  x.test <- MASS::mvrnorm(n = n.test, mu = rep(0, p), Sigma = sigma)
+  x.test[id, ] <- sweep(x.test[id, , drop = FALSE], 2, MU2, FUN = "+")
   
   list(x = x, y = y, x.test = x.test, y.test = y.test, MU2 = MU2)
 }
+
 do.simulation <- function(n, p, d, n.test, p.contam, RUNs, isNSTransformed, isOracle, Model, err.sigma){
   pi <- 0.5
   delta <- (2 * qnorm(0.10))^2
@@ -152,8 +149,10 @@ do.simulation <- function(n, p, d, n.test, p.contam, RUNs, isNSTransformed, isOr
       x.test.norm <- matrix(0, n.test, p)
       if(isOracle){
         for(i in 1:p){
-          x.norm[, i] <- 0.5 * (pnorm(x.uncontam[, i]) + pnorm(x.uncontam[, i], mean=MU2[i], sd=1))
-          x.test.norm[, i] <- 0.5 * (pnorm(x.test[, i]) + pnorm(x.test[, i], mean=MU2[i], sd=1))
+          tmp1 <- pnorm(x.uncontam[, i], mean=0, sd=1) + pnorm(x.uncontam[, i], mean=MU2[i], sd=1)
+          x.norm[, i] <- qnorm(0.5 * tmp1 * (n/(n+1)))
+          tmp1 <- pnorm(x.test[, i], mean=0, sd=1) + pnorm(x.test[, i], mean=MU2[i], sd=1)
+          x.test.norm[, i] <- qnorm(0.5 * tmp1 * (n/(n+1)))
         }
       }else{
         for(i in 1:p){
@@ -180,7 +179,18 @@ do.simulation <- function(n, p, d, n.test, p.contam, RUNs, isNSTransformed, isOr
     error[h] <- mean(abs(fit - y.test))
     
     pam.sel <- rep(0,p)
-    junk <- capture.output(pam.sel[as.numeric(pamr.listgenes(obj.pam,dat.train,threshold=t_thresh)[,1])] <- 1)
+    gene_list <- tryCatch({
+      junk <- capture.output(res <- pamr.listgenes(obj.pam, dat.train, threshold = t_thresh))
+      res
+    }, error = function(e) {
+      NULL 
+    })
+    if (!is.null(gene_list) && is.matrix(gene_list) && nrow(gene_list) > 0) {
+      gene_indices <- as.numeric(gene_list[, 1])
+      pam.sel[gene_indices] <- 1
+    } else {
+      pam.sel[] <- 0 
+    }
     
     Iv.true <- as.numeric(MU2 != 0)
     Iv.hat  <- as.numeric(pam.sel > 0)
@@ -191,7 +201,7 @@ do.simulation <- function(n, p, d, n.test, p.contam, RUNs, isNSTransformed, isOr
   }
   
   cat("----------------------------------------------------------------------------------------------\n")
-  cat("Error :", median(error), "(", sd(error * 100) / sqrt(RUNs), ")", "\n")
+  cat("Error :", median(error * 100), "(", sd(error * 100) / sqrt(RUNs), ")", "\n")
   cat("FN    :", median(FN), "(", sd(FN) / sqrt(RUNs), ")","\n")
   cat("FP    :", median(FP), "(", sd(FP) / sqrt(RUNs), ")","\n")
   cat("----------------------------------------------------------------------------------------------\n")
@@ -230,8 +240,10 @@ do.simulation2 <- function(n, p, d, n.test, p.contam, RUNs, isNSTransformed, isO
       x.test.norm <- matrix(0, n.test, p)
       if(isOracle){
         for(i in 1:p){
-          x.norm[, i] <- 0.5 * (pweibull(x.uncontam[, i], shape = 1, scale = 1) + pweibull(x.uncontam[, i] - MU2[i], shape = 1, scale = 1))
-          x.test.norm[, i] <- 0.5 * (pweibull(x.test[, i], shape = 1, scale = 1) + pweibull(x.test[, i] - MU2[i], shape = 1, scale = 1))
+          tmp1 <- pweibull(x.uncontam[, i], shape=1, scale=1) + pweibull(x.uncontam[, i] - MU2[i], shape=1, scale=1)
+          x.norm[, i] <- qnorm(0.5 * tmp1 * (n/(n+1)))
+          tmp1 <- pweibull(x.test[, i], shape=1, scale=1) + pweibull(x.test[, i] - MU2[i], shape=1, scale=1)
+          x.test.norm[, i] <- qnorm(0.5 * tmp1 * (n/(n+1)))
         }
       }else{
         for(i in 1:p){
@@ -258,7 +270,18 @@ do.simulation2 <- function(n, p, d, n.test, p.contam, RUNs, isNSTransformed, isO
     error[h] <- mean(abs(fit - y.test))
     
     pam.sel <- rep(0,p)
-    junk <- capture.output(pam.sel[as.numeric(pamr.listgenes(obj.pam,dat.train,threshold=t_thresh)[,1])] <- 1)
+    gene_list <- tryCatch({
+      junk <- capture.output(res <- pamr.listgenes(obj.pam, dat.train, threshold = t_thresh))
+      res
+    }, error = function(e) {
+      NULL 
+    })
+    if (!is.null(gene_list) && is.matrix(gene_list) && nrow(gene_list) > 0) {
+      gene_indices <- as.numeric(gene_list[, 1])
+      pam.sel[gene_indices] <- 1
+    } else {
+      pam.sel[] <- 0 
+    }
     
     Iv.true <- as.numeric(MU2 != 0)
     Iv.hat  <- as.numeric(pam.sel > 0)
@@ -269,7 +292,7 @@ do.simulation2 <- function(n, p, d, n.test, p.contam, RUNs, isNSTransformed, isO
   }
   
   cat("----------------------------------------------------------------------------------------------\n")
-  cat("Error :", median(error), "(", sd(error * 100) / sqrt(RUNs), ")", "\n")
+  cat("Error :", median(error * 100), "(", sd(error * 100) / sqrt(RUNs), ")", "\n")
   cat("FN    :", median(FN), "(", sd(FN) / sqrt(RUNs), ")","\n")
   cat("FP    :", median(FP), "(", sd(FP) / sqrt(RUNs), ")","\n")
   cat("----------------------------------------------------------------------------------------------\n")
