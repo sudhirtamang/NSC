@@ -74,7 +74,7 @@ do.simulationN1 <- function(n, p, d, n.test, p.contam, RUNs, isNSTransformed, is
     for(i in 1:n){
       idx.contam <- which(rbinom(p, 1, p.contam) == 1)
       if (length(idx.contam) > 0) {
-        x[i, idx.contam] <- rt(length(idx.contam), 3)
+        x[i, idx.contam] <- rcauchy(length(idx.contam), location = 0, scale = 1)
       }
     }
     
@@ -191,7 +191,7 @@ do.simulationN5 <- function(n, p, d, n.test, p.contam, RUNs, isNSTransformed, is
     for(i in 1:n){
       idx.contam <- which(rbinom(p, 1, p.contam) == 1)
       if (length(idx.contam) > 0) {
-        x[i, idx.contam] <- rt(length(idx.contam), 3)
+        x[i, idx.contam] <- rcauchy(length(idx.contam), location = 0, scale = 1)
       }
     }
     
@@ -303,7 +303,7 @@ do.simulationN4 <- function(n, p, d, n.test, p.contam, RUNs, isNSTransformed, is
     for(i in 1:n){
       idx.contam <- which(rbinom(p, 1, p.contam) == 1)
       if (length(idx.contam) > 0) {
-        x[i, idx.contam] <- rt(length(idx.contam), 3)
+        x[i, idx.contam] <- rcauchy(length(idx.contam), location = 0, scale = 1)
       }
     }
     
